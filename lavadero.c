@@ -16,6 +16,7 @@ void  timing(void);
 void  arrive(void);
 void  depart(void);
 void  report(void);
+float interarrive_with_formula(float *vars, float *probs);
 void  update_time_avg_stats(void);
 float expon(float mean);
 float  gen_next_interarrive(void);
@@ -41,9 +42,14 @@ float service_time_total;
 float time_last_service;
 float time_in_business;
 float last_queue_change;
+int sum_num_in_q;
+int total_steps;
 
 //quiero: tiempo promedio que un cliente pasa en el comercio, promedio que pasan en la cola,
 //numero clientes en comercio promedio, numero promedio clientes en cola, utilizacion de maquina
+
+//a que se refiere con tiempo que pasa en el comercio? tiempo usando la maquina? o tiempo en cola + tiempo usando maquina?
+//lo mismo con numero de gente en comercio
 
 int main(int argc, char *argv[])  /* Main function. */
 {
@@ -118,6 +124,8 @@ void initialize(void)  /* Initialization function. */
      time_last_service=0.0;
      time_in_business=0.0;
      last_queue_change=0.0;
+     sum_num_in_q=0;
+     total_steps=1; //sino se pasa de largo el de 0 a primer sim_time
 
 
 
@@ -156,6 +164,9 @@ void arrive(void)  /* Arrival event function. */
     float delay;
 
     /* Schedule next arrival. */
+
+    sum_num_in_q=sum_num_in_q+num_in_q;
+    total_steps++;
 
     printf("\n Llego en %f",sim_time);
 
@@ -212,6 +223,9 @@ void depart(void)  /* Departure event function. */
     int   i;
     float delay;
 
+    sum_num_in_q=sum_num_in_q+num_in_q;
+    total_steps++;
+
     /* Check to see whether the queue is empty. */
 
     service_time_total=service_time_total + (sim_time - time_last_service);
@@ -261,8 +275,14 @@ void report(void)  /* Report generator function. */
     //Average delay in queue
     float avgdelays=total_of_delays/sim_time;
     float serverutilization=service_time_total/sim_time;
+    float tiempopromencola=total_of_delays/completed_transactions;
+    float numeroencolaprom=(float) sum_num_in_q/ (float) total_steps;
+    printf("\n sum_num_in_q: %d",sum_num_in_q);
+    printf("\n total_steps: %d",total_steps);
     printf("\n area bajo curva utilizacion server: %f",serverutilization);
     printf("\n area bajo curva cola: %f",avgdelays);
+    printf("\n tiempo promedio en cola: %f",tiempopromencola);
+    printf("\n numero de gente en cola promedio: %f",numeroencolaprom);
     //Average number in queue
 
     //Server utilization
@@ -293,7 +313,8 @@ void update_time_avg_stats(void)  /* Update area accumulators for time-average
 
 float gen_next_interarrive()
 {
-  float var=random_variable_given_probabilities(interarrive_times,interarrive_probabilities);
+  //float var=random_variable_given_probabilities(interarrive_times,interarrive_probabilities);
+  float var=interarrive_with_formula(interarrive_times,interarrive_probabilities);
   //printf("\n var interarrivo: %f", var);
   return var;
 }
@@ -316,6 +337,26 @@ float random_variable_given_probabilities(float *vars, float *probs)
         //printf("\n prob acum: %f", prob_acum);
         //printf("\n probs[i]: %f", probs[i]);
        if (random_number>=prob_acum && random_number<prob_acum+probs[i]){
+           //printf("\n variable aleatoria: %f", vars[i]);
+           return vars[i];
+       }
+       prob_acum=prob_acum+probs[i];
+       i=i+1;
+    }
+}
+
+//es asi? Tengo que hacer lo de dos maquinas? que son los valores de performance teoricos, los estadisticos?
+float interarrive_with_formula(float *vars, float *probs){
+    float random_number= lcgrand(4);
+    int lambda=3;
+    float interarrive=(-1/(float) lambda) * (log(1-random_number));
+    float prob_acum=0.0;
+    int i=0;
+    while(probs[i]>0.0){
+        //printf("\n i: %d", i);
+        //printf("\n prob acum: %f", prob_acum);
+        //printf("\n probs[i]: %f", probs[i]);
+       if (interarrive>=prob_acum && interarrive<prob_acum+probs[i]){
            //printf("\n variable aleatoria: %f", vars[i]);
            return vars[i];
        }
