@@ -23,25 +23,32 @@ float  gen_next_depart(void);
 int num_in_q;
 float time_last_event;
 int num_custs_delayed;
-int total_of_delays;
+float total_of_delays;
 int next_event_type;
+int completed_transactions;
 float time_next_event[2];
 int server_status;
 float sim_time;
-int area_num_in_q;
-int area_server_status;
+float area_num_in_q;
+float area_server_status;
 float service_times[6]={10.0,20.0,30.0,40.0,-1.0,-1.0};
 float service_money[6]={5000.0,7000.0,9000.0,11000.0,-1.0,-1.0};
 float service_probabilities[6]={0.15,0.25,0.4,0.2,-1.0,-1.0};
 float interarrive_times[10]={5.0,10.0,15.0,20.0,25.0,30.0,35.0,40.0,-1.0,-1.0};
 float interarrive_probabilities[10]={0.05,0.05,0.1,0.1,0.3,0.2,0.15,0.05,-1.0,-1.0};
 float arrival_time[Q_LIMIT-1];
+float service_time_total;
+float time_last_service;
+float time_in_business;
+float last_queue_change;
+
+//quiero: tiempo promedio que un cliente pasa en el comercio, promedio que pasan en la cola,
+//numero clientes en comercio promedio, numero promedio clientes en cola, utilizacion de maquina
 
 int main(int argc, char *argv[])  /* Main function. */
 {
 
     /* Initialize the simulation. */
-
 
     float max_time=atof(argv[1]); // tiempo maximo en minutos
 
@@ -71,6 +78,13 @@ int main(int argc, char *argv[])  /* Main function. */
         }
     }
 
+    while (num_in_q>0 || server_status==BUSY){
+        sim_time=time_next_event[1];
+        depart();
+    }
+
+    printf("\n num in q: %d",num_in_q);
+
     /* Invoke the report generator and end the simulation. */
 
     report();
@@ -95,9 +109,16 @@ void initialize(void)  /* Initialization function. */
     // Initialize the statistical counters. num_custs_delayed, total_of_delays, area_num_in_q, area_server_status
 
      num_custs_delayed=0;
-     total_of_delays=0;
-     area_num_in_q=0; //promedio de cola
-     area_server_status=0; //promedio de server
+     total_of_delays=0.0;
+     area_num_in_q=0,0; //longitud promedio de cola
+     area_server_status=0.0; //utilizacion promedio de server
+     service_time_total=0.0;
+     completed_transactions=0;
+     service_time_total=0.0;
+     time_last_service=0.0;
+     time_in_business=0.0;
+     last_queue_change=0.0;
+
 
 
     /* Initialize event list.  Since no customers are present, the departure
@@ -110,7 +131,6 @@ void initialize(void)  /* Initialization function. */
 
 void timing(void)  /* Timing function. */
 {
-    int   i;
     float min_time_next_event = 1.0e+29;
     printf("%f",time_next_event[1]);
 
@@ -139,7 +159,7 @@ void arrive(void)  /* Arrival event function. */
 
     printf("\n Llego en %f",sim_time);
 
-    num_custs_delayed=num_custs_delayed+1;
+    completed_transactions++;
     time_next_event[0] = sim_time + gen_next_interarrive();
 
     printf("\n Proximo arrivo en %f",time_next_event[0]);
@@ -150,8 +170,9 @@ void arrive(void)  /* Arrival event function. */
 
         /* Server is busy, so increment number of customers in queue. */
     //printf("\n num_in_q: %d",num_in_q);
-    arrival_time[num_in_q]=sim_time;
+    total_of_delays=total_of_delays+((sim_time - last_queue_change )* num_in_q);
 	num_in_q++;
+	last_queue_change=sim_time;
 
         /* Check to see whether an overflow condition exists. */
 
@@ -162,6 +183,7 @@ void arrive(void)  /* Arrival event function. */
 
         /* Guardar el tiempo de arribo de esta entidad para los calculos estadisticos */
 
+        arrival_time[num_in_q-1]=sim_time;
 
 
     }
@@ -172,12 +194,13 @@ void arrive(void)  /* Arrival event function. */
 
 	//...
 
-        //...	
+        //...
 
 
         /* Schedule a departure (service completion). */
+        server_status = BUSY;
+        time_last_service=sim_time;
         time_next_event[1] = sim_time + gen_next_depart();
-        server_status=BUSY;
         printf("\n Proxima salida en %f",time_next_event[1]);
     }
 }
@@ -191,11 +214,13 @@ void depart(void)  /* Departure event function. */
 
     /* Check to see whether the queue is empty. */
 
+    service_time_total=service_time_total + (sim_time - time_last_service);
+
     if (num_in_q == 0) {
 
         /* The queue is empty so make the server idle and eliminate the
            departure (service completion) event from consideration. */
-        
+
         server_status=IDLE;
         time_next_event[1]=1.0e+30;
     }
@@ -205,10 +230,13 @@ void depart(void)  /* Departure event function. */
         /* The queue is nonempty, so decrement the number of customers in
            queue. */
 
-        num_in_q--;
 
         /* Compute the delay of the customer who is beginning service and update
            the total delay accumulator. */
+        printf("\n num_in_q: %d", num_in_q);
+        total_of_delays=total_of_delays+((sim_time - last_queue_change)* num_in_q);
+        num_in_q--;
+        last_queue_change=sim_time;
 
         //sim_time - arrival_time[num_in_q]
 
@@ -220,6 +248,7 @@ void depart(void)  /* Departure event function. */
         time_next_event[1] = sim_time + gen_next_depart();
         printf("\n Proxima salida en %f",time_next_event[1]);
         server_status=BUSY;
+        time_last_service=sim_time;
 
     }
 }
@@ -230,7 +259,10 @@ void report(void)  /* Report generator function. */
     /* Compute and write estimates of desired measures of performance. */
 
     //Average delay in queue
-
+    float avgdelays=total_of_delays/sim_time;
+    float serverutilization=service_time_total/sim_time;
+    printf("\n area bajo curva utilizacion server: %f",serverutilization);
+    printf("\n area bajo curva cola: %f",avgdelays);
     //Average number in queue
 
     //Server utilization
@@ -259,7 +291,7 @@ void update_time_avg_stats(void)  /* Update area accumulators for time-average
 }
 
 
-float gen_next_interarrive()  
+float gen_next_interarrive()
 {
   float var=random_variable_given_probabilities(interarrive_times,interarrive_probabilities);
   //printf("\n var interarrivo: %f", var);
